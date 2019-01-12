@@ -22,6 +22,7 @@
 namespace OCA\Files_Sharing\Controller;
 
 use OC\OCS\Result;
+use OC\Share20\ExtraPermissions;
 use OCP\AppFramework\OCSController;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
@@ -126,6 +127,43 @@ class Share20OcsController extends OCSController {
 	}
 
 	/**
+	 * @param IShare $share
+	 * @param string[][] $formattedShareExtraPermissions
+	 * @return IShare modified share
+	 */
+	private function extractExtraPermissions(IShare $share, $formattedShareExtraPermissions) {
+		$shareExtraPermissions = $share->getExtraPermissions();
+		foreach($formattedShareExtraPermissions as $formattedPermission) {
+			$shareExtraPermissions->setPermission(
+				$formattedPermission["app"],
+				$formattedPermission["name"],
+				(bool) json_decode($formattedPermission["enabled"])
+			);
+		}
+
+		$share->setExtraPermissions($shareExtraPermissions);
+		return $share;
+	}
+
+	/**
+	 * @param IShare $share
+	 * @return array
+	 */
+	private function formatExtraPermissions(IShare $share) {
+		$permissions = $share->getExtraPermissions();
+		$formattedShareExtraPermissions = [];
+		foreach($permissions->getApps() as $app) {
+			foreach($permissions->getKeys($app) as $key) {
+				$formattedPermission['app'] = $app;
+				$formattedPermission['name'] = $key;
+				$formattedPermission['enabled'] = $permissions->getPermission($app, $key);
+				$formattedShareExtraPermissions[] = $formattedPermission;
+			}
+		}
+		return json_encode($formattedShareExtraPermissions);
+	}
+
+	/**
 	 * Convert an IShare to an array for OCS output
 	 *
 	 * @param IShare $share
@@ -143,6 +181,7 @@ class Share20OcsController extends OCSController {
 			'uid_owner' => $share->getSharedBy(),
 			'displayname_owner' => $sharedBy !== null ? $sharedBy->getDisplayName() : $share->getSharedBy(),
 			'permissions' => $share->getPermissions(),
+			'extra_permissions' => $this->formatExtraPermissions($share),
 			'stime' => $share->getShareTime() ? $share->getShareTime()->getTimestamp() : null,
 			'parent' => null,
 			'expiration' => null,
@@ -488,6 +527,10 @@ class Share20OcsController extends OCSController {
 			$share->getNode()->unlock(ILockingProvider::LOCK_SHARED);
 			return new Result(null, 400, $this->l->t('Unknown share type'));
 		}
+
+
+		$formattedExtraPermissions = $this->request->getParam('extraPermissions', []);
+		$share = $this->extractExtraPermissions($share, $formattedExtraPermissions);
 
 		$share->setShareType($shareType);
 		$share->setSharedBy($this->currentUser->getUID());
@@ -835,6 +878,9 @@ class Share20OcsController extends OCSController {
 		if ($share->getPermissions() === 0) {
 			return new Result(null, 400, $this->l->t('Cannot remove all permissions'));
 		}
+
+		$formattedExtraPermissions = $this->request->getParam('extraPermissions', []);
+		$share = $this->extractExtraPermissions($share, $formattedExtraPermissions);
 
 		try {
 			$share = $this->shareManager->updateShare($share);
