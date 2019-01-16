@@ -75,27 +75,27 @@ class ListCommand extends Base {
 			->addArgument(
 				'user_id',
 				InputArgument::OPTIONAL,
-				'user id to list the personal mounts for, if no user is provided admin mounts will be listed'
+				'User id to list the personal mounts for, if no user is provided admin mounts will be listed'
 			)->addOption(
 				'show-password',
 				null,
 				InputOption::VALUE_NONE,
-				'show passwords and secrets'
+				'Show passwords and secrets'
 			)->addOption(
 				'full',
 				null,
 				InputOption::VALUE_NONE,
-				'don\'t truncate long values in table output'
+				'Don\'t truncate long values in table output'
 			)->addOption(
 				'all',
 				'a',
 				InputOption::VALUE_NONE,
-				'show both system wide mounts and all personal mounts'
+				'Show mounts for all users. All has precedence over user_id'
 			)->addOption(
 				'short',
 				's',
 				InputOption::VALUE_NONE,
-				'show only a reduced mount info'
+				'Show only a reduced mount info'
 			);
 		parent::configure();
 	}
@@ -116,6 +116,7 @@ class ListCommand extends Base {
 		$this->listMounts($userId, $mounts, $input, $output);
 	}
 
+
 	/**
 	 * @param $userId $userId
 	 * @param IStorageConfig[] $mounts
@@ -126,6 +127,7 @@ class ListCommand extends Base {
 		$outputType = $input->getOption('output');
 		$shortView = $input->getOption('short');
 
+		// check if there are any mounts present
 		if (\count($mounts) === 0) {
 			if ($outputType === self::OUTPUT_FORMAT_JSON || $outputType === self::OUTPUT_FORMAT_JSON_PRETTY) {
 				$output->writeln('[]');
@@ -141,8 +143,9 @@ class ListCommand extends Base {
 			return;
 		}
 
+		// set minimum columns used based on options
 		if ($shortView) {
-			$headers = ['Mount ID', 'Mount Point', 'Type'];
+			$headers = ['Mount ID', 'Mount Point', 'Auth', 'Type'];
 			// if there is no userId or option --all is set, insert additional columns
 			if (!$userId || $userId === self::ALL) {
 				\array_splice($headers, 2, 0, 'Applicable Users');
@@ -252,6 +255,13 @@ class ListCommand extends Base {
 			}
 			// This MUST stay the last entry
 			if ($shortView || $userId === self::ALL) {
+				// query the auth type 
+				if (\stristr($config->getBackend()->getText(), 'session') === TRUE) {
+					$values[] =  'Session';
+				} else {
+					$values[] = 'User';
+				}
+				// get the mount type
 				$values[] = $config->getType() === IStorageConfig::MOUNT_TYPE_ADMIN ? 'Admin' : 'Personal';
 			}
 
